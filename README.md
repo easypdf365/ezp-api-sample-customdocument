@@ -9,7 +9,7 @@ It shows how to:
 - use a CompoundKey when sending a document
 - make use of the EZP_Document record and CompoundKey in event subscribers
 
-Note: this sample subscribes to most Easy PDF events
+Note: this sample subscribes to most Easy PDF events  
 Normally you would not do that, but it is done within to give some insight
 
 Further note:
