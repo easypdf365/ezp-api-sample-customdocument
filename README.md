@@ -1,4 +1,4 @@
-Custom Document Sample
+Easy PDF Custom Documents sample
 
 This sample adds custom Easy PDF Documents for the sales order and purchase order.
 
