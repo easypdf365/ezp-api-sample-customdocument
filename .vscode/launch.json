@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "al",
+            "request": "launch",
+            "name": "SB2300US",
+            "server": "http://bchost:23000",
+            "port": 23004,
+            "serverInstance": "BC",
+            "authentication": "UserPassword",
+            "schemaUpdateMode": "ForceSync",
+            "startupObjectType": "Page",
+            "breakOnError": false,
+            "launchBrowser": true,
+            "tenant": "default"
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+*.app
+*.bak
+.alpackages/*
+.vscode/.altemplates/*
+.vscode/.alcache/*
+Translations/*
+rad.json
+debug.log
