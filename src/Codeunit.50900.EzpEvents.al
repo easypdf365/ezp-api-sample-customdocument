@@ -1,9 +1,9 @@
 codeunit 50900 EZPX_EzpEvents
 {
     // About using the 'CompoundKey' variable
-    // CompoundKey is provided as a way for you to pass data to your implementation.
-    // It is a Text variable and can be used to store whatever you wish.
-    // You pass it into the *_API procedures and it resurfaces in the downstream events that are raised
+    // CompoundKey is provided as a way for you to pass data to your event subscribers.
+    // It is a Text variable and can be used to store whatever you wish (text, json, whatever).
+    // You pass it into the EZP_API_* procedures and it resurfaces in the downstream events that are raised
     // You should use the following convention to avoid collision with other extensions that also use the Easy PDF API
     // CompoundKey := '<Prefix>;<data>'
     // Where Prefix = some short, globally unique, identifier for your app.
@@ -97,16 +97,20 @@ codeunit 50900 EZPX_EzpEvents
         ok: Boolean;
     begin
         // This event fires when Easy PDF is preparing to process a document for mailing or printing
-        // You need to prime Easy PDF with the database record associated with the document code
-
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
+        // You need to prime Easy PDF with the database record(s) associated with the document code
+        // We will setup references to records that Easy PDF uses when processing the document type for delivery 
+        // The built-in types for the SetAssociatedRecordId() procedure are:
+        //  'document', 'customer', 'vendor', 'contact', 'shipto' or 'shiptoaddress', 'location', 
+        //  'salesperson' or 'purchaser' or 'salespersonpurchaser'
+        // In addition, the following can be used for other record types
+        //  'custom1', 'custom2', 'custom3', 'custom4', 'custom5'
 
         case DocumentCode of
             CustomSalesDocumentCodeLbl:
                 begin
-                    // You must set filters on the record
-                    if SalesHeaderRec.Get("Sales Document Type"::Order, DocumentNo) then begin
+                    SalesHeaderRec.SetRange("Document Type", "Sales Document Type"::Order);
+                    SalesHeaderRec.SetRange("No.", DocumentNo);
+                    if SalesHeaderRec.FindFirst() then begin
 
                         SalesHeaderRec.SetRecFilter();
                         EzpDocumentRec.SetAssociatedRecordId('Document', SalesHeaderRec.RecordId());
@@ -135,7 +139,9 @@ codeunit 50900 EZPX_EzpEvents
             CustomPurchaseDocumentCodeLbl:
                 begin
                     // You must set filters on the record
-                    if PurchaseHeaderRec.Get("Purchase Document Type"::Order, DocumentNo) then begin
+                    PurchaseHeaderRec.SetRange("Document Type", "Purchase Document Type"::Order);
+                    PurchaseHeaderRec.SetRange("No.", DocumentNo);
+                    if PurchaseHeaderRec.FindFirst() then begin
 
                         PurchaseHeaderRec.SetRecFilter();
                         EzpDocumentRec.SetAssociatedRecordId('Document', PurchaseHeaderRec.RecordId());
@@ -175,19 +181,14 @@ codeunit 50900 EZPX_EzpEvents
     end;
 
     [EventSubscriber(ObjectType::Codeunit, Codeunit::EZP_API_Events, 'OnGetDeliveryMethod', '', true, true)]
-    internal procedure OnGetPreferredMethod(EZPDocumentRec: Record EZP_Document; CompoundKey: Text; ExternalDocumentVar: Variant; var DeliveryMethod: Enum EZP_DeliveryMethodType);
+    internal procedure OnGetDeliveryMethod(EZPDocumentRec: Record EZP_Document; CompoundKey: Text; ExternalDocumentVar: Variant; var DeliveryMethod: Enum EZP_DeliveryMethodType);
     var
         EZPDeliveryMethodRec: Record EZP_DeliveryMethod;
-        SalesHeaderRec: Record "Sales Header";
-        PurchaseHeaderRec: Record "Purchase Header";
         CustomerRec: Record Customer;
         VendorRec: Record Vendor;
     begin
         // Implement to override values retrieved from the Customer/Vendor card
         // Remove this subscriber if you do not intend to override default values
-
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
 
         // Note: The following implementation is not required assuming you configured the RecipientType & Customer/Vendor records in OnInitializeRecord.
         // Below is the default implementation for retrieving the Delivery Method
@@ -196,9 +197,8 @@ codeunit 50900 EZPX_EzpEvents
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
                 begin
-                    SalesHeaderRec := EzpDocumentRec.GetAssociatedRecord('Document', SalesHeaderRec);
-                    CustomerRec.Get(SalesHeaderRec."Sell-to Customer No.");
                     // Default method for this Customer
+                    CustomerRec := EzpDocumentRec.GetAssociatedRecord('Customer', CustomerRec);
                     DeliveryMethod := CustomerRec.EZP_DeliveryMethod;
                     // Document specific method for this Customer
                     if EZPDeliveryMethodRec.Get(EZP_OwnerType::Customer, CustomerRec."No.", EZPDocumentRec.Code) then
@@ -206,9 +206,8 @@ codeunit 50900 EZPX_EzpEvents
                 end;
             CustomPurchaseDocumentCodeLbl:
                 begin
-                    PurchaseHeaderRec := EzpDocumentRec.GetAssociatedRecord('Document', PurchaseHeaderRec);
-                    VendorRec.Get(PurchaseHeaderRec."Buy-from Vendor No.");
                     // Default method for this Vendor
+                    VendorRec := EzpDocumentRec.GetAssociatedRecord('Vendor', VendorRec);
                     DeliveryMethod := VendorRec.EZP_DeliveryMethod;
                     // Document specific method for this Vendor
                     if EZPDeliveryMethodRec.Get(EZP_OwnerType::Vendor, VendorRec."No.", EZPDocumentRec.Code) then
@@ -220,16 +219,11 @@ codeunit 50900 EZPX_EzpEvents
     [EventSubscriber(ObjectType::Codeunit, Codeunit::EZP_API_Events, 'OnGetPreferredLanguage', '', true, true)]
     internal procedure OnGetPreferredLanguage(EZPDocumentRec: Record EZP_Document; CompoundKey: Text; ExternalDocumentVar: Variant; var PreferredLanguage: Code[10]);
     var
-        SalesHeaderRec: Record "Sales Header";
-        PurchaseHeaderRec: Record "Purchase Header";
         CustomerRec: Record Customer;
         VendorRec: Record Vendor;
     begin
         // Implement to override values retrieved from the Customer/Vendor/Contact card configured in OnAfterInitializeRecord
         // Remove this subscriber if you do not intend to override default values
-
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
 
         // Below is the default implementation for retrieving the Preferred Language.
         // This code is included only for additional insight.
@@ -237,16 +231,14 @@ codeunit 50900 EZPX_EzpEvents
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
                 begin
-                    SalesHeaderRec := EzpDocumentRec.GetAssociatedRecord('Document', SalesHeaderRec);
-                    CustomerRec.Get(SalesHeaderRec."Sell-to Customer No.");
                     // Default language for this Customer
+                    CustomerRec := EzpDocumentRec.GetAssociatedRecord('Customer', CustomerRec);
                     PreferredLanguage := CustomerRec."Language Code";
                 end;
             CustomPurchaseDocumentCodeLbl:
                 begin
-                    PurchaseHeaderRec := EzpDocumentRec.GetAssociatedRecord('Document', PurchaseHeaderRec);
-                    VendorRec.Get(PurchaseHeaderRec."Buy-from Vendor No.");
                     // Default language for this Vendor
+                    VendorRec := EzpDocumentRec.GetAssociatedRecord('Vendor', VendorRec);
                     PreferredLanguage := VendorRec."Language Code";
                 end;
         end;
@@ -311,9 +303,6 @@ codeunit 50900 EZPX_EzpEvents
         // Here is the default implementation for sales and purchase documents
         // This code is included only for additional insight.
 
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
-
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
                 begin
@@ -348,9 +337,6 @@ codeunit 50900 EZPX_EzpEvents
         // Implement to return a RecordRef and filtered Field record based for the underlying record
         // Used when performing token substitution or printing the record
 
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
-
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
                 begin
@@ -374,8 +360,6 @@ codeunit 50900 EZPX_EzpEvents
         PurchaseHeaderRec: Record "Purchase Header";
     begin
         // Implement to return a value for the archived version number - displayed on the batch page
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
 
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
@@ -400,8 +384,6 @@ codeunit 50900 EZPX_EzpEvents
         PurchaseHeaderRec: Record "Purchase Header";
     begin
         // Implement to return a value for the record - displayed on the batch page
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
 
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
@@ -423,9 +405,8 @@ codeunit 50900 EZPX_EzpEvents
     internal procedure OnGetPredefinedToken(EZPDocumentRec: Record EZP_Document; CompoundKey: Text; ExternalDocumentVar: Variant; Token: Text; var TokenValue: Text);
     begin
         // Implement to define custom static tokens used during token replacement
+        // Static tokens are not bound to field values, they are simple text substitutions as you define them
         // e.g., [[MY_CUSTOM_TOKEN]] --> "My Custom Token"
-        if not CompoundKey.StartsWith('EZPX') then
-            exit;
 
         case Token of
             'MY_CUSTOM_TOKEN':
@@ -439,14 +420,14 @@ codeunit 50900 EZPX_EzpEvents
         // Implement to define related tables used during token replacement
 
         // An Easy PDF 'token' has the form [[{table}field]]
-        // (Actually it has the more general form [[(flags){table}field;length;format]] but for this discussion we ignore the other bits...)
+        // (Actually it has the more general form [[(flags){table}field;length;format;regex]] but for this discussion we ignore the other bits...)
         //
         // When Easy PDF parses a token it extracts the table name from the token (if it exists).
         // If the table name is not one of those defined in OnAfterInitializeRecord the Easy PDF raises this event.
         // In this way, you can define 'related' tables -- for instance, you might have a 'Supplier' table that is related to a 'Product' table..
         // When sending the Product document you could then reference the Supplier.Name field in a token using [[{Supplier}Name]]
         // And in this event subscriber you would do something like:
-        // ProductRec.Copy(ExternalDocumentVar);
+        // ProductRec := EZPDocumentRec.GetAssociatedRecord('Document', ProductRec);
         // if SupplierRec.Get(ProductRec."Supplier No.") then begin
         //     RecRef.GetTable(SupplierRec);
         //     FieldRec.SetRange(TableNo, RefRef.Number());
@@ -463,10 +444,7 @@ codeunit 50900 EZPX_EzpEvents
         // This event fires after the user previews a report or cancels sending an email (with the printed report attached).
         // If the underlying record is keeping track of printed copies (e.g., Posted Sales Invoice) then this event provides an opportunity
         // to decrement that count -- since preview or unsent email should not increment it.
-        // Note: most posted documents don't give Modify permission to the average user -- so you need to verify that the user can modify the record
-
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
+        // Note: most posted documents don't give Modify permission to the average user -- so you need to verify that the user can modify the record else an error will occur.
 
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
@@ -503,9 +481,6 @@ codeunit 50900 EZPX_EzpEvents
         // Hook this event to return proper values if you wish to support Customer/Vendor Document Layouts
 
         // Here is the default implementation for the SALES ORDER and PURCHASE ORDER documents
-
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
 
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
@@ -553,13 +528,10 @@ codeunit 50900 EZPX_EzpEvents
         EZPDocumentRec: Record EZP_Document;
         SalesHeaderRec: Record "Sales Header";
     begin
-        // If this event was not raised by Easy PDF then do nothing
-        if not CompoundKey.StartsWith('EZP;') then
-            exit;
 
         if  DocumentCode = 'SALES ORDER' then begin
             // Here we are going to 'hijack' the release processing of the 'SALES ORDER' document
-            // Note: EventType is one of: 'POSTED', 'RELEASED', 'ISSSUED', 'EXPORTED'
+            // Note: the EventType parameter is one of: 'POSTED', 'RELEASED', 'ISSSUED', 'EXPORTED'
             if EventType = 'RELEASED' then begin
 
                 SalesHeaderRec := RecordVar;
@@ -572,6 +544,8 @@ codeunit 50900 EZPX_EzpEvents
                     if EZPDocumentRec.SendOnPost then begin
                         DocumentCode := CustomSalesDocumentCodeLbl;
                         CompoundKey := 'EZPX;'
+                        // we're setting the CompoundKey here so we know in downstream events that we are the
+                        // initiator of the flow.
                     end;
                     if EZPDocumentRec.BatchOnPost then begin
                         DocumentCode := CustomSalesDocumentCodeLbl;
@@ -615,9 +589,6 @@ codeunit 50900 EZPX_EzpEvents
         // Here is the default implementation for the SALES ORDER
         // Note: you must call Commit before RunModal or you will likely get a runtime error
 
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
-
         Commit();
         case EZPDocumentRec.Code of
             CustomSalesDocumentCodeLbl:
@@ -647,9 +618,6 @@ codeunit 50900 EZPX_EzpEvents
         //
         // Here is the default implementation for the SALES ORDER
         // Note: you must call Commit before RunModal or you will likely get a runtime error
-
-        if not CompoundKey.StartsWith('EZPX;') then
-            exit;
 
         Commit();
         case EZPDocumentRec.Code of
